@@ -157,6 +157,21 @@ gh pr merge 3 --squash --delete-branch
 </section>
 
 <section>
+  <h2>The real stack — open it live</h2>
+  <table>
+    <tr><th>PR</th><th>head</th><th>base</th></tr>
+    <tr><td><a href="https://github.com/mahditilab/stacked-pr-demo/pull/1">#1 price schema</a></td>
+        <td><code>demo/1-schema</code></td><td><code>main</code></td></tr>
+    <tr><td><a href="https://github.com/mahditilab/stacked-pr-demo/pull/2">#2 price service</a></td>
+        <td><code>demo/2-service</code></td><td class="good"><code>demo/1-schema</code></td></tr>
+    <tr><td><a href="https://github.com/mahditilab/stacked-pr-demo/pull/3">#3 price api</a></td>
+        <td><code>demo/3-api</code></td><td class="good"><code>demo/2-service</code></td></tr>
+  </table>
+  <p>Open #3 → <span class="good">1 file changed</span>, not 3.</p>
+  <small class="note">github.com/mahditilab/stacked-pr-demo</small>
+</section>
+
+<section>
   <h2>Rules of thumb</h2>
   <ul>
     <li>Merge <b>bottom-up</b>, always.</li>
