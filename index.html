@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stacked PRs — with Copilot CLI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/night.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/highlight/monokai.css">
+<style>
+  .reveal pre { width: 100%; font-size: .48em; box-shadow: none; }
+  .reveal pre code { max-height: 520px; padding: 1em; border-radius: 8px; }
+  .reveal section h2 { color: #7fd1ff; text-transform: none; }
+  .reveal section h3 { color: #ffd479; text-transform: none; font-size: 1.1em; }
+  .reveal .prompt { background:#132030; border-left:4px solid #7fd1ff; padding:.6em 1em;
+                    font-family: monospace; font-size:.5em; text-align:left; border-radius:6px; }
+  .reveal .bad { color:#ff8a8a; } .reveal .good { color:#8aff9e; }
+  .reveal table { font-size:.6em; }
+  .reveal .stack { text-align:left; font-family:monospace; font-size:.7em; line-height:1.6; }
+  .reveal small.note { color:#9bb; font-size:.5em; display:block; margin-top:1em; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<section>
+  <h2>Stacked Pull Requests</h2>
+  <p>Ship in small reviewable pieces — without waiting.</p>
+  <small class="note">…and let Copilot CLI do the branch plumbing.</small>
+</section>
+
+<section>
+  <h2>The problem</h2>
+  <ul>
+    <li>Feature = schema + service + API + tests</li>
+    <li class="bad">One PR: 1,400 lines → "LGTM 👍" (nobody read it)</li>
+    <li class="bad">Split into 3 PRs off <code>main</code> → PR 2 can't compile without PR 1</li>
+    <li class="bad">So you wait. Review latency × 3.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>The idea</h2>
+  <div class="stack">
+    main<br>
+    &nbsp;└─ demo/1-schema&nbsp;&nbsp;→ PR #1 (base: main)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;└─ demo/2-service → PR #2 (base: demo/1-schema)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ demo/3-api&nbsp;&nbsp;&nbsp;→ PR #3 (base: demo/2-service)
+  </div>
+  <p>Each PR's base is the branch below it →<br><span class="good">each PR shows only its own diff.</span></p>
+</section>
+
+<section>
+  <h2>Why bother</h2>
+  <table>
+    <tr><th></th><th>One big PR</th><th>Stack</th></tr>
+    <tr><td>Review size</td><td>1400 lines</td><td class="good">~150 each</td></tr>
+    <tr><td>Author blocked?</td><td>yes, until merge</td><td class="good">no, keep stacking</td></tr>
+    <tr><td>Bisect / revert</td><td>all-or-nothing</td><td class="good">per layer</td></tr>
+    <tr><td>Cost</td><td>—</td><td class="bad">rebase chain on feedback</td></tr>
+  </table>
+</section>
+
+<section>
+  <section>
+    <h2>Demo 1 — build the stack</h2>
+    <div class="prompt">
+Create a throwaway private repo <code>stacked-pr-demo</code>, clone it, and build a 3-PR stack for a fake price feature: branch demo/1-schema (schema.sql) based on main, demo/2-service (service.java) based on demo/1-schema, demo/3-api (controller.java) based on demo/2-service. Push each and open a PR with <code>gh pr create -B &lt;parent branch&gt;</code>, titled "1/3 …", "2/3 …", "3/3 …". Print the 3 PR URLs.
+    </div>
+  </section>
+  <section>
+    <h3>…what it actually runs</h3>
+    <pre><code class="language-bash" data-trim>
+gh repo create stacked-pr-demo --private --clone && cd stacked-pr-demo
+echo "# demo" > README.md
+git add -A && git commit -m "init" && git push -u origin main
+
+git checkout -b demo/1-schema
+echo "CREATE TABLE price(id int primary key);" > schema.sql
+git add -A && git commit -m "add price schema"
+git push -u origin demo/1-schema
+gh pr create -B main -H demo/1-schema -t "1/3 price schema" -b "Base: main"
+
+git checkout -b demo/2-service           # branches off 1-schema
+echo "class PriceService {}" > service.java
+git add -A && git commit -m "add price service"
+git push -u origin demo/2-service
+gh pr create -B demo/1-schema -H demo/2-service -t "2/3 price service" -b "Base: #1"
+
+git checkout -b demo/3-api               # branches off 2-service
+echo "@RestController class PriceController {}" > controller.java
+git add -A && git commit -m "add price API"
+git push -u origin demo/3-api
+gh pr create -B demo/2-service -H demo/3-api -t "3/3 price API" -b "Base: #2"
+    </code></pre>
+    <p><span class="good">The only trick: <code>-B &lt;parent branch&gt;</code>.</span></p>
+  </section>
+</section>
+
+<section>
+  <section>
+    <h2>Demo 2 — prove it's stacked</h2>
+    <div class="prompt">
+For each PR in stacked-pr-demo, show its base branch and the files it changes, so I can demo that each PR only contains its own diff.
+    </div>
+  </section>
+  <section>
+    <pre><code class="language-bash" data-trim>
+gh pr list --json number,title,baseRefName,headRefName
+gh pr view 2 --json files --jq '.files[].path'   # only service.java
+    </code></pre>
+    <p>Open PR #2 in the browser → <span class="good">"Files changed: 1"</span></p>
+  </section>
+</section>
+
+<section>
+  <section>
+    <h2>Demo 3 — feedback on the bottom PR</h2>
+    <p>The one real cost of stacking.</p>
+    <div class="prompt">
+Simulate review feedback on PR #1: add a NOT NULL column to schema.sql, commit and push to demo/1-schema, then restack demo/2-service and demo/3-api on top with <code>git rebase</code> + <code>git push --force-with-lease</code>. Show me the commands as you run them.
+    </div>
+  </section>
+  <section>
+    <pre><code class="language-bash" data-trim>
+git checkout demo/1-schema
+echo "ALTER TABLE price ADD COLUMN gross numeric NOT NULL;" >> schema.sql
+git commit -am "review: gross not null" && git push
+
+# restack, bottom-up
+git rebase demo/1-schema demo/2-service
+git push --force-with-lease
+git rebase demo/2-service demo/3-api
+git push --force-with-lease
+    </code></pre>
+    <p><span class="bad">Always <code>--force-with-lease</code></span>, never bare <code>--force</code>.</p>
+  </section>
+</section>
+
+<section>
+  <section>
+    <h2>Demo 4 — merge cascade</h2>
+    <div class="prompt">
+Merge PR #1 with squash, then show the base branch of PRs #2 and #3 so I can demo GitHub's auto-retargeting. Then merge #2, re-check #3, then merge #3.
+    </div>
+  </section>
+  <section>
+    <pre><code class="language-bash" data-trim>
+gh pr merge 1 --squash --delete-branch
+gh pr view 2 --json baseRefName   # -> "main"   ← GitHub retargeted it
+gh pr merge 2 --squash --delete-branch
+gh pr view 3 --json baseRefName   # -> "main"
+gh pr merge 3 --squash --delete-branch
+    </code></pre>
+    <p class="good">Merge bottom-up. GitHub retargets the child automatically — no manual base editing.</p>
+  </section>
+</section>
+
+<section>
+  <h2>Rules of thumb</h2>
+  <ul>
+    <li>Merge <b>bottom-up</b>, always.</li>
+    <li>Number your titles <code>1/3, 2/3, 3/3</code> and link the parent in the body.</li>
+    <li>Keep the stack ≤ 3–4 deep. Deeper = rebase pain &gt; review win.</li>
+    <li>Rebase, don't merge, when restacking.</li>
+    <li>Squash-merge keeps <code>main</code> readable.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Cleanup</h2>
+  <div class="prompt">Delete the stacked-pr-demo repo and the local clone.</div>
+  <pre><code class="language-bash" data-trim>
+gh repo delete stacked-pr-demo --yes && cd .. && rm -rf stacked-pr-demo
+  </code></pre>
+</section>
+
+<section>
+  <h2>Takeaway</h2>
+  <p>Stacked PRs = <span class="good">small reviews without blocking yourself</span>.</p>
+  <p>Plain <code>git</code> + <code>gh</code> is enough — the only new flag is <code>gh pr create -B &lt;parent&gt;</code>.</p>
+  <small class="note">Copilot CLI handles the branch/rebase plumbing so you can stay on the feature.</small>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/highlight/highlight.js"></script>
+<script>Reveal.initialize({hash:true, slideNumber:'c/t', plugins:[RevealHighlight]});</script>
+</body>
+</html>
