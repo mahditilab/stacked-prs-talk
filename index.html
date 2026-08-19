@@ -27,6 +27,11 @@
   <h2>Stacked Pull Requests</h2>
   <p>Ship in small reviewable pieces — without waiting.</p>
   <small class="note">…and let Copilot CLI do the branch plumbing.</small>
+  <aside class="notes">
+    20 min + questions. Ask up front: "who has opened a PR over 1000 lines this month?" — hands go up, that's the hook.
+    Promise: one new flag, no new tool to install. Everything is git + gh you already have.
+    Say the live demo is real: 3 open PRs on my GitHub, we'll merge them at the end.
+  </aside>
 </section>
 
 <section>
@@ -37,6 +42,11 @@
     <li class="bad">Split into 3 PRs off <code>main</code> → PR 2 can't compile without PR 1</li>
     <li class="bad">So you wait. Review latency × 3.</li>
   </ul>
+  <aside class="notes">
+    Tell the story, don't read the bullets. Big PR → reviewer opens it, sees 40 files, scrolls, approves. That's not review, that's a rubber stamp.
+    The honest alternative today is splitting off main — but layer 2 doesn't compile without layer 1, so you either wait for merge or you copy commits around.
+    Land the pain point: the bottleneck isn't writing code, it's the serialized wait.
+  </aside>
 </section>
 
 <section>
@@ -48,6 +58,11 @@
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ demo/3-api&nbsp;&nbsp;&nbsp;→ PR #3 (base: demo/2-service)
   </div>
   <p>Each PR's base is the branch below it →<br><span class="good">each PR shows only its own diff.</span></p>
+  <aside class="notes">
+    This is the whole talk in one slide. Pause here.
+    A PR's diff = head compared to its base. Point the base at the branch below instead of main, and GitHub subtracts the parent's changes for you. No tooling, that's just how PRs work.
+    Branch 2 is created FROM branch 1, so it compiles — you keep working while #1 is in review.
+  </aside>
 </section>
 
 <section>
@@ -59,6 +74,11 @@
     <tr><td>Bisect / revert</td><td>all-or-nothing</td><td class="good">per layer</td></tr>
     <tr><td>Cost</td><td>—</td><td class="bad">rebase chain on feedback</td></tr>
   </table>
+  <aside class="notes">
+    Be honest about the last row — it buys credibility. Stacking is not free: feedback on the bottom PR means rebasing everything above it. We'll do exactly that live in demo 3.
+    Reviewers get context in order: schema, then service, then API. They review a story, not a pile.
+    Revert row: if the API layer is broken in prod you revert one squash commit, not the whole feature.
+  </aside>
 </section>
 
 <section>
@@ -67,6 +87,11 @@
     <div class="prompt">
 Create a throwaway private repo <code>stacked-pr-demo</code>, clone it, and build a 3-PR stack for a fake price feature: branch demo/1-schema (schema.sql) based on main, demo/2-service (service.java) based on demo/1-schema, demo/3-api (controller.java) based on demo/2-service. Push each and open a PR with <code>gh pr create -B &lt;parent branch&gt;</code>, titled "1/3 …", "2/3 …", "3/3 …". Print the 3 PR URLs.
     </div>
+    <aside class="notes">
+      Read the prompt out loud — the point is that it's plain English, no git jargon. Notice I never say "rebase" or "checkout -b".
+      If you're running Copilot live: paste it and let it work while you talk over the next slide. If the room's wifi is bad, skip to the commands slide, it's the same thing.
+      Note "throwaway private repo" — make it public before the talk or the links on the demo slide 404 for the audience.
+    </aside>
   </section>
   <section>
     <h3>…what it actually runs</h3>
@@ -94,6 +119,13 @@ git push -u origin demo/3-api
 gh pr create -B demo/2-service -H demo/3-api -t "3/3 price API" -b "Base: #2"
     </code></pre>
     <p><span class="good">The only trick: <code>-B &lt;parent branch&gt;</code>.</span></p>
+    <aside class="notes">
+      Don't read the script line by line — highlight three things only:
+      1) each `git checkout -b` runs while the previous branch is checked out, so branch 2 contains branch 1's commits;
+      2) `gh pr create -B demo/1-schema` — that's the whole feature, every other flag is normal;
+      3) titles numbered 1/3, 2/3, 3/3 so reviewers know the order.
+      Everything else is `echo` and `commit` to fake a feature.
+    </aside>
   </section>
 </section>
 
@@ -103,6 +135,10 @@ gh pr create -B demo/2-service -H demo/3-api -t "3/3 price API" -b "Base: #2"
     <div class="prompt">
 For each PR in stacked-pr-demo, show its base branch and the files it changes, so I can demo that each PR only contains its own diff.
     </div>
+    <aside class="notes">
+      Short slide. This is the "prove it" moment — people are skeptical that GitHub really hides the parent's diff.
+      Say what you expect BEFORE running it: "PR 3 should show one file, controller.java, even though the branch contains three commits."
+    </aside>
   </section>
   <section>
     <pre><code class="language-bash" data-trim>
@@ -110,6 +146,11 @@ gh pr list --json number,title,baseRefName,headRefName
 gh pr view 2 --json files --jq '.files[].path'   # only service.java
     </code></pre>
     <p>Open PR #2 in the browser → <span class="good">"Files changed: 1"</span></p>
+    <aside class="notes">
+      Actually switch to the browser here — the "Files changed: 1" badge next to a 3-commit branch is what sells the whole idea.
+      Also point at the base-branch dropdown at the top of the PR: `demo/2-service ← demo/3-api`. That dropdown is the entire feature.
+      Expected question: "does CI run on these?" — yes, normally; each PR builds its own branch, which contains the parents, so it compiles.
+    </aside>
   </section>
 </section>
 
@@ -120,6 +161,11 @@ gh pr view 2 --json files --jq '.files[].path'   # only service.java
     <div class="prompt">
 Simulate review feedback on PR #1: add a NOT NULL column to schema.sql, commit and push to demo/1-schema, then restack demo/2-service and demo/3-api on top with <code>git rebase</code> + <code>git push --force-with-lease</code>. Show me the commands as you run them.
     </div>
+    <aside class="notes">
+      Set it up as the objection: "fine, but what happens when a reviewer wants a change in PR 1?" This is the part people worry about, so don't hide it.
+      This is also where Copilot earns its keep — the rebase chain is mechanical, error-prone, and boring. Exactly the work to hand off.
+      Say "show me the commands as you run them" is deliberate: for a talk you want the commands visible, not just the result.
+    </aside>
   </section>
   <section>
     <pre><code class="language-bash" data-trim>
@@ -134,6 +180,13 @@ git rebase demo/2-service demo/3-api
 git push --force-with-lease
     </code></pre>
     <p><span class="bad">Always <code>--force-with-lease</code></span>, never bare <code>--force</code>.</p>
+    <aside class="notes">
+      Two things to stress:
+      1) Restack BOTTOM-UP. Rebase 2 onto 1 first, then 3 onto the new 2. Do it top-down and you'll rebase onto commits that are about to be rewritten.
+      2) `--force-with-lease` aborts if someone else pushed to that branch in the meantime; plain `--force` silently overwrites their work. On a stack you force-push constantly, so make it muscle memory.
+      Honest caveat: existing review comments on the rebased PRs can go "outdated" — that's the real tax. Keep stacks 3–4 deep so it stays cheap.
+      Conflicts: resolve once, at the layer that owns the file; `git rebase --continue` and move up.
+    </aside>
   </section>
 </section>
 
@@ -143,6 +196,10 @@ git push --force-with-lease
     <div class="prompt">
 Merge PR #1 with squash, then show the base branch of PRs #2 and #3 so I can demo GitHub's auto-retargeting. Then merge #2, re-check #3, then merge #3.
     </div>
+    <aside class="notes">
+      The payoff slide. Most people assume unwinding a stack is manual work — it isn't.
+      Ask the room first: "when I merge #1 and delete its branch, what happens to #2, whose base was that branch?" Usual guess: it closes or breaks. It doesn't.
+    </aside>
   </section>
   <section>
     <pre><code class="language-bash" data-trim>
@@ -153,6 +210,11 @@ gh pr view 3 --json baseRefName   # -> "main"
 gh pr merge 3 --squash --delete-branch
     </code></pre>
     <p class="good">Merge bottom-up. GitHub retargets the child automatically — no manual base editing.</p>
+    <aside class="notes">
+      Run the `gh pr view 2 --json baseRefName` line and let the output speak: base flipped from demo/1-schema to main by itself.
+      Caveat worth naming: squash-merge rewrites history, so after merging #1 you may need one more rebase of #2 onto main before it's clean. On a small demo it just works; on a real stack, expect one restack per merge.
+      Alternative if that annoys you: merge-commit instead of squash. We prefer squash for a readable main — pick one and be consistent.
+    </aside>
   </section>
 </section>
 
@@ -169,6 +231,12 @@ gh pr merge 3 --squash --delete-branch
   </table>
   <p>Open #3 → <span class="good">1 file changed</span>, not 3.</p>
   <small class="note">github.com/mahditilab/stacked-pr-demo</small>
+  <aside class="notes">
+    Invite them to open it on their laptops now — links are live in the deck.
+    Walk the base column top to bottom: main, then 1-schema, then 2-service. That column IS the stack.
+    Have PR #3 open in a second tab as backup in case the live demo failed.
+    Reminder: repo must be public or these 404 — `gh repo edit mahditilab/stacked-pr-demo --visibility public --accept-visibility-change-consequences`.
+  </aside>
 </section>
 
 <section>
@@ -180,6 +248,12 @@ gh pr merge 3 --squash --delete-branch
     <li>Rebase, don't merge, when restacking.</li>
     <li>Squash-merge keeps <code>main</code> readable.</li>
   </ul>
+  <aside class="notes">
+    The "what do I do tomorrow" slide — slow down, this is what they'll remember.
+    Depth limit is the important one: 3–4. Beyond that the rebase chain costs more than the smaller reviews save.
+    Add: split by layer, not by file count — each PR should be independently reviewable and ideally independently green.
+    And: tell your reviewer it's a stack. A reviewer who doesn't know will ask "where's the API for this schema?"
+  </aside>
 </section>
 
 <section>
@@ -188,6 +262,10 @@ gh pr merge 3 --squash --delete-branch
   <pre><code class="language-bash" data-trim>
 gh repo delete stacked-pr-demo --yes && cd .. && rm -rf stacked-pr-demo
   </code></pre>
+  <aside class="notes">
+    Throwaway slide — 10 seconds. Point is only that the whole demo is disposable, so anyone can rehearse this today without touching a real repo.
+    Don't actually run the delete if you still want the links in the deck to work afterwards.
+  </aside>
 </section>
 
 <section>
@@ -195,11 +273,21 @@ gh repo delete stacked-pr-demo --yes && cd .. && rm -rf stacked-pr-demo
   <p>Stacked PRs = <span class="good">small reviews without blocking yourself</span>.</p>
   <p>Plain <code>git</code> + <code>gh</code> is enough — the only new flag is <code>gh pr create -B &lt;parent&gt;</code>.</p>
   <small class="note">Copilot CLI handles the branch/rebase plumbing so you can stay on the feature.</small>
+  <aside class="notes">
+    Close with the ask, not a summary: "next feature that's more than ~300 lines, split it into two stacked PRs. Just two. Tag me as reviewer and I'll help."
+    Deck + prompts are shareable: link in the channel.
+    Likely questions:
+    • "Do we need Graphite / git-spr?" — No. Useful if you stack daily; plain gh is enough to start.
+    • "What about branch protection / required reviews?" — applies per PR as usual; merge bottom-up and each gets its own approval.
+    • "Isn't force-pushing dangerous?" — only on shared branches; a stack branch is yours, and --force-with-lease protects you.
+    • "What if the stack goes stale vs main?" — rebase the bottom onto main, then restack upward. Same drill as demo 3.
+  </aside>
 </section>
 
 </div></div>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/highlight/highlight.js"></script>
-<script>Reveal.initialize({hash:true, slideNumber:'c/t', plugins:[RevealHighlight]});</script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/notes/notes.js"></script>
+<script>Reveal.initialize({hash:true, slideNumber:'c/t', plugins:[RevealHighlight, RevealNotes]});</script>
 </body>
 </html>
